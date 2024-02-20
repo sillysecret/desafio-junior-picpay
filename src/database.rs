@@ -1,13 +1,20 @@
-use crate::{Pessoa, TransactionDTS, PessoaDTS};
+use crate::{Pessoa, TransactionDTS, PessoaDTS,Transaction};
 use reqwest::StatusCode;
-use sqlx::{PgPool,postgres::PgPoolOptions, Row};
-use time::Time;
+use sqlx::{postgres::PgPoolOptions, types::time, PgPool, Row};
 use uuid::Uuid;
 use time::OffsetDateTime;
+use time::Date;
+
+
+
+
+
+
 
 pub struct Repository{
     pool: PgPool, 
 }
+
 
 impl Repository {
     pub async fn conn(url : String) -> Self {
@@ -41,43 +48,32 @@ impl Repository {
     
     }
 
-   pub async fn createTransaction(&self  , newTransaction:TransactionDTS) -> Result<Pessoa, sqlx::Error>{    
+   pub async fn createTransaction(&self  , newTransaction:TransactionDTS) -> Result<Transaction, sqlx::Error>{    
     
-    match self.update_balance_of_payee(newTransaction.clone()).await{
-        Ok(_) => {},
-        Err(e) => {
-            return Err(e)
-        }
-    }
-
-    match self.update_balance_of_payer(newTransaction.clone()).await{
-        Ok(_) => {},
-        Err(e) => {
-            return Err(e)
-        }
-        
-    }
-    
-    sqlx::query_as(
+    let newid = uuid::Uuid::now_v7();
+    let current_time = OffsetDateTime::now_utc();
+    let formatted_time = current_time.date();
+    sqlx::query_as!(
+        Transaction,
         "
-        INSERT INTO transaction (id, payee, payer, amount, date)
+        INSERT INTO Transacao (id, payee, payer, amount, tempo)
         VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, payee, payer, amount, date
-    ",
+        RETURNING id, payee, payer, amount, tempo
+        ",
+        newid, 
+        newTransaction.payee,
+        newTransaction.payer,
+        newTransaction.amount, 
+        formatted_time // Convert OffsetDateTime to Date
     )
-    .bind(Uuid::now_v7()) // Gerar um novo UUID para a transação
-    .bind(newTransaction.payee)
-    .bind(newTransaction.payer)
-    .bind(newTransaction.amont)
-    .bind(time::OffsetDateTime::now_utc())
     .fetch_one(&self.pool)
-    .await   
-    
+    .await
    
-    
 }
 
-async fn update_balance_of_payee(&self ,data:TransactionDTS) -> Result<(), sqlx::Error>{   
+pub async fn update_balance_of_payee(&self ,data:TransactionDTS) -> Result<(), sqlx::Error>{   
+    print!("passou pelo update do recebedor");
+    print!("{}",data.payee);
     sqlx::query_as(
         "
         UPDATE Pessoa
@@ -85,13 +81,16 @@ async fn update_balance_of_payee(&self ,data:TransactionDTS) -> Result<(), sqlx:
         WHERE id = $2
         "
     )
-    .bind(data.amont)
+    .bind(data.amount)
     .bind(data.payee)
     .fetch_one(&self.pool)
     .await
 }
 
-async fn update_balance_of_payer(&self ,data:TransactionDTS) -> Result<(), sqlx::Error>{   
+pub async fn update_balance_of_payer(&self ,data:TransactionDTS) -> Result<(), sqlx::Error>{   
+    print!("passou pelo update do pagante");
+    print!("{}",data.payer);
+    print!("{}",data.payee);
     sqlx::query_as(
         "
         UPDATE Pessoa
@@ -99,8 +98,8 @@ async fn update_balance_of_payer(&self ,data:TransactionDTS) -> Result<(), sqlx:
         WHERE id = $2
         "
     )
-    .bind(data.amont)
-    .bind(data.payee)
+    .bind(data.amount)
+    .bind(data.payer)
     .fetch_one(&self.pool)
     .await
 }

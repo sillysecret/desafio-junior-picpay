@@ -16,8 +16,8 @@ CREATE TABLE Pessoa (
   name VARCHAR(100) NOT NULL,
   email VARCHAR(100) UNIQUE NOT NULL,
   CPF VARCHAR(100) UNIQUE NOT NULL,
-  balance INTEGER,
-  tipo BOOLEAN,
+  balance INTEGER NOT NULL,
+  tipo BOOLEAN NOT NULL,
   password VARCHAR(100) NOT NULL,
   search TSVECTOR GENERATED ALWAYS AS(
     TO_TSVECTOR('pessoas', name || ' ' || email || ' ' || CPF || ' ' || COALESCE(balance::TEXT, '') || ' ' || CASE WHEN tipo THEN 'true' ELSE 'false' END || ' ' || password)
@@ -28,10 +28,10 @@ CREATE TABLE Pessoa (
 CREATE INDEX pessoa_search_index ON Pessoa USING GIN(search);
 
 CREATE TABLE Transacao (
-  id UUID PRIMARY KEY,
-  payee UUID REFERENCES Pessoa(id),
-  payer UUID REFERENCES Pessoa(id),
-  amount NUMERIC NOT NULL,
-  date DATE NOT NULL
+  id UUID PRIMARY KEY NOT NULL,
+  payee UUID REFERENCES Pessoa(id)NOT NULL,
+  payer UUID REFERENCES Pessoa(id)NOT NULL,
+  amount INTEGER NOT NULL,
+  tempo DATE NOT NULL
 );
 

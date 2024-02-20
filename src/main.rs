@@ -12,6 +12,7 @@ use std::sync::Arc;
 use axum::extract::Query;
 use database::Repository;
 use reqwest::Error;
+use time::{OffsetDateTime, macros::date}; 
 
 mod database;
 
@@ -50,18 +51,19 @@ pub struct PessoaDTS{
 
 #[derive(Serialize,Clone,Deserialize,sqlx::FromRow)]
 pub struct Transaction{
+    pub id:Uuid,
     pub payee:Uuid,
     pub payer:Uuid,
-    pub amont:i32,
+    pub amount:i32,
     #[serde(with = "date_format" )]
-    pub timestamp:Date
+    pub tempo:time::Date
 }
 
 #[derive(Serialize,Clone,Deserialize,sqlx::FromRow)]
 pub struct TransactionDTS{
     pub payee:Uuid,
     pub payer:Uuid,
-    pub amont:i32
+    pub amount:i32
 }
 
 // true = cliente , false = logista  
@@ -101,11 +103,11 @@ async fn mktransaction(State(localbd): State<AppState>,Json(payload): Json<Trans
     
     if let (Ok(Some(pessoa1)), Ok(Some(pessoa2))) = (payee, payer) {
         // Ambas as funções retornaram uma pessoa\
-        if pessoa1.tipo{
+        if pessoa1.tipo {
             return Err((StatusCode::UNPROCESSABLE_ENTITY,"Logista nao pode fazer transferencias"));
         }
 
-        if pessoa2.balance<payload.amont{
+        if pessoa2.balance<payload.amount{
             return Err((StatusCode::UNPROCESSABLE_ENTITY,"Seu balance nao suporta a transaction"));
         }     
             match fetch_data().await {
@@ -116,9 +118,16 @@ async fn mktransaction(State(localbd): State<AppState>,Json(payload): Json<Trans
         return Err((StatusCode::NOT_FOUND,"Alguma das pessoas nao existe"));
     }
 
-    match localbd.createTransaction(payload).await{
-        Ok(transaction)=>Ok((StatusCode::CREATED,Json(transaction))),
-        Err(_)=>Err((StatusCode::INTERNAL_SERVER_ERROR,"Erro")),
+    match localbd.createTransaction(payload.clone()).await{
+        Ok(Transaction)=>{
+            localbd.update_balance_of_payee(payload.clone()).await;
+            localbd.update_balance_of_payer(payload.clone()).await;
+            Ok((StatusCode::CREATED,Json(Transaction)))
+        },
+        Err(e)=>{
+            println!("{:?}",e);
+            Err((StatusCode::INTERNAL_SERVER_ERROR,"Erro"))
+        },
     }
 
     
@@ -126,8 +135,6 @@ async fn mktransaction(State(localbd): State<AppState>,Json(payload): Json<Trans
 
     
 }
-
-
 
 async fn mkpessoa(State(localbd): State<AppState>,Json(payload): Json<PessoaDTS>) -> impl IntoResponse {
     if payload.name.len() > 100 || payload.cpf.len()>100 || payload.password.len()>100{
